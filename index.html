@@ -4,32 +4,32 @@
 <meta charset="UTF-8">
 <title>Portal FPS</title>
 <style>
-body { margin:0; overflow:hidden; }
+body { margin:0; overflow:hidden; background:black; }
 canvas { display:block; }
 </style>
 </head>
 <body>
 
-<script type="module">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/PointerLockControls.js"></script>
 
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.module.js";
-import { PointerLockControls } from "https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/controls/PointerLockControls.js";
+<script>
 
 let scene = new THREE.Scene();
 scene.background = new THREE.Color(0x111111);
 
 let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-let renderer = new THREE.WebGLRenderer({ antialias:true });
+let renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // Controls
-let controls = new PointerLockControls(camera, document.body);
+let controls = new THREE.PointerLockControls(camera, document.body);
 document.body.addEventListener("click", ()=>controls.lock());
 scene.add(controls.getObject());
 
 // Light
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
 
 // Floor
 let floor = new THREE.Mesh(
@@ -39,134 +39,18 @@ let floor = new THREE.Mesh(
 floor.rotation.x = -Math.PI/2;
 scene.add(floor);
 
-// Wall
-let wall = new THREE.Mesh(
-    new THREE.BoxGeometry(20,10,1),
-    new THREE.MeshStandardMaterial({color:0x555555})
+// Simple cube so you can SEE something
+let cube = new THREE.Mesh(
+    new THREE.BoxGeometry(3,3,3),
+    new THREE.MeshStandardMaterial({color:0x00ff00})
 );
-wall.position.set(0,5,-20);
-scene.add(wall);
+cube.position.set(0,2,-10);
+scene.add(cube);
 
-// Portal render targets
-let rtA = new THREE.WebGLRenderTarget(512,512);
-let rtB = new THREE.WebGLRenderTarget(512,512);
-
-let camA = new THREE.PerspectiveCamera(75,1,0.1,1000);
-let camB = new THREE.PerspectiveCamera(75,1,0.1,1000);
-
-let portalA = new THREE.Mesh(
-    new THREE.PlaneGeometry(3,5),
-    new THREE.MeshBasicMaterial({map:rtA.texture})
-);
-portalA.position.set(-5,2,-15);
-scene.add(portalA);
-
-let portalB = new THREE.Mesh(
-    new THREE.PlaneGeometry(3,5),
-    new THREE.MeshBasicMaterial({map:rtB.texture})
-);
-portalB.position.set(5,2,-15);
-scene.add(portalB);
-
-// Player physics
-let velocity = new THREE.Vector3();
-let gravity = -20;
-let maxVelocity = 30;
-let keys = {};
-let canJump=false;
-
-document.addEventListener("keydown", e=>keys[e.code]=true);
-document.addEventListener("keyup", e=>keys[e.code]=false);
-
-function updatePlayer(dt){
-
-    let dir = new THREE.Vector3(
-        Number(keys["KeyD"])-Number(keys["KeyA"]),
-        0,
-        Number(keys["KeyS"])-Number(keys["KeyW"])
-    ).normalize();
-
-    if(dir.length()>0){
-        let forward = new THREE.Vector3();
-        controls.getDirection(forward);
-        forward.y=0;
-        forward.normalize();
-
-        let right = new THREE.Vector3();
-        right.crossVectors(camera.up, forward).normalize();
-
-        velocity.add(forward.multiplyScalar(-dir.z*12*dt));
-        velocity.add(right.multiplyScalar(dir.x*12*dt));
-    }
-
-    velocity.y += gravity*dt;
-
-    if(keys["Space"] && canJump){
-        velocity.y = 8;
-        canJump=false;
-    }
-
-    if(velocity.length()>maxVelocity){
-        velocity.normalize().multiplyScalar(maxVelocity);
-    }
-
-    controls.getObject().position.addScaledVector(velocity,dt);
-
-    if(controls.getObject().position.y<2){
-        velocity.y=0;
-        controls.getObject().position.y=2;
-        canJump=true;
-    }
-
-    checkTeleport();
-}
-
-function checkTeleport(){
-    let p = controls.getObject().position;
-
-    if(p.distanceTo(portalA.position)<1.5){
-        teleport(portalA,portalB);
-    }
-    if(p.distanceTo(portalB.position)<1.5){
-        teleport(portalB,portalA);
-    }
-}
-
-function teleport(from,to){
-    let offset = controls.getObject().position.clone().sub(from.position);
-    controls.getObject().position.copy(to.position.clone().add(offset));
-}
-
-function updatePortals(){
-
-    let playerPos = controls.getObject().position.clone();
-
-    let offsetA = playerPos.clone().sub(portalA.position);
-    camB.position.copy(portalB.position.clone().add(offsetA));
-    camB.quaternion.copy(camera.quaternion);
-
-    let offsetB = playerPos.clone().sub(portalB.position);
-    camA.position.copy(portalA.position.clone().add(offsetB));
-    camA.quaternion.copy(camera.quaternion);
-
-    renderer.setRenderTarget(rtA);
-    renderer.render(scene, camB);
-
-    renderer.setRenderTarget(rtB);
-    renderer.render(scene, camA);
-
-    renderer.setRenderTarget(null);
-}
-
-let clock = new THREE.Clock();
+camera.position.y = 2;
 
 function animate(){
     requestAnimationFrame(animate);
-    let dt = clock.getDelta();
-
-    updatePlayer(dt);
-    updatePortals();
-
     renderer.render(scene,camera);
 }
 
