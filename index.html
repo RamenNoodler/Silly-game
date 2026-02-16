@@ -62,7 +62,6 @@ class BumperKart {
     const noseGeo = new THREE.BoxGeometry(1, 0.35, 0.6);
     const nose = new THREE.Mesh(noseGeo, bodyMat);
     nose.position.set(0, 0.4, -1.2);
-    nose.castShadow = true;
     this.group.add(nose);
 
     // Seat
@@ -70,38 +69,62 @@ class BumperKart {
     const seatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
     const seat = new THREE.Mesh(seatGeo, seatMat);
     seat.position.set(0, 0.6, 0.3);
-    seat.castShadow = true;
     this.group.add(seat);
 
-    // Wheels
+    // Wheel setup
     const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16);
     const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
 
+    this.frontWheels = [];
+    this.rearWheels = [];
+
     const wheelPositions = [
-      [-0.8, 0.35, 0.8],
-      [ 0.8, 0.35, 0.8],
-      [-0.8, 0.35, -0.8],
-      [ 0.8, 0.35, -0.8]
+      { x: -0.8, y: 0.35, z: 0.8, front: true },
+      { x:  0.8, y: 0.35, z: 0.8, front: true },
+      { x: -0.8, y: 0.35, z: -0.8, front: false },
+      { x:  0.8, y: 0.35, z: -0.8, front: false }
     ];
 
     wheelPositions.forEach(pos => {
+      const wheelPivot = new THREE.Group();
+      wheelPivot.position.set(pos.x, pos.y, pos.z);
+      this.group.add(wheelPivot);
+
       const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(...pos);
-      wheel.castShadow = true;
-      this.group.add(wheel);
+      wheel.rotation.z = Math.PI / 2; // sideways
+      wheelPivot.add(wheel);
+
+      if (pos.front) {
+        this.frontWheels.push(wheelPivot);
+      } else {
+        this.rearWheels.push(wheelPivot);
+      }
     });
 
     this.group.position.set(x, 0, z);
 
     this.velocity = new THREE.Vector3();
     this.speed = 0;
+    this.steerAngle = 0;
   }
 
   update() {
     this.group.position.add(this.velocity);
+
+    // Spin wheels based on movement
+    const spinAmount = this.speed * 5;
+
+    [...this.frontWheels, ...this.rearWheels].forEach(pivot => {
+      pivot.children[0].rotation.x -= spinAmount;
+    });
+
+    // Turn front wheels visually
+    this.frontWheels.forEach(pivot => {
+      pivot.rotation.y = this.steerAngle;
+    });
   }
 }
+
 
 // Create Player Kart
 const player = new BumperKart(0xff0000, 0, 0);
@@ -116,16 +139,27 @@ function updatePlayer() {
   if (keys["ArrowUp"]) player.speed += 0.01;
   if (keys["ArrowDown"]) player.speed -= 0.01;
 
-  player.speed *= 0.98; // friction
+  player.speed *= 0.98;
 
-  if (keys["ArrowLeft"]) player.group.rotation.y += 0.04;
-  if (keys["ArrowRight"]) player.group.rotation.y -= 0.04;
+  // Steering input
+  if (keys["ArrowLeft"]) {
+    player.group.rotation.y += 0.04;
+    player.steerAngle = 0.5;
+  } 
+  else if (keys["ArrowRight"]) {
+    player.group.rotation.y -= 0.04;
+    player.steerAngle = -0.5;
+  } 
+  else {
+    player.steerAngle = 0;
+  }
 
   const forward = new THREE.Vector3(0, 0, -1);
   forward.applyQuaternion(player.group.quaternion);
 
   player.velocity.copy(forward).multiplyScalar(player.speed);
 }
+
 
 // Camera Follow
 function updateCamera() {
