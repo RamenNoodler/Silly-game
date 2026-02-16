@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>3D Kart Prototype</title>
+  <title>3D Bumper Kart</title>
   <style>
     body { margin: 0; overflow: hidden; }
   </style>
@@ -25,84 +25,137 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+renderer.shadowMap.enabled = true;
+
 // Lighting
 const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 10, 7);
+light.position.set(5, 10, 5);
+light.castShadow = true;
 scene.add(light);
 
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
 // Ground
-const groundGeometry = new THREE.PlaneGeometry(100, 100);
-const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+const groundGeo = new THREE.PlaneGeometry(100, 100);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
 scene.add(ground);
 
-// Kart
-const kartGeometry = new THREE.BoxGeometry(1, 0.5, 2);
-const kartMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-const kart = new THREE.Mesh(kartGeometry, kartMaterial);
-kart.position.y = 0.25;
-scene.add(kart);
+// -------- BUMPER KART CLASS --------
+class BumperKart {
+  constructor(color, x, z) {
 
-// Movement variables
-let velocity = new THREE.Vector3();
-let speed = 0;
-const maxSpeed = 0.2;
-const acceleration = 0.01;
-const friction = 0.005;
+    this.group = new THREE.Group();
+    scene.add(this.group);
 
+    // Body
+    const bodyGeo = new THREE.BoxGeometry(1.2, 0.4, 2);
+    const bodyMat = new THREE.MeshStandardMaterial({ color });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.4;
+    body.castShadow = true;
+    this.group.add(body);
+
+    // Nose
+    const noseGeo = new THREE.BoxGeometry(1, 0.35, 0.6);
+    const nose = new THREE.Mesh(noseGeo, bodyMat);
+    nose.position.set(0, 0.4, -1.2);
+    nose.castShadow = true;
+    this.group.add(nose);
+
+    // Seat
+    const seatGeo = new THREE.BoxGeometry(0.8, 0.4, 0.6);
+    const seatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const seat = new THREE.Mesh(seatGeo, seatMat);
+    seat.position.set(0, 0.6, 0.3);
+    seat.castShadow = true;
+    this.group.add(seat);
+
+    // Wheels
+    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+    const wheelPositions = [
+      [-0.8, 0.35, 0.8],
+      [ 0.8, 0.35, 0.8],
+      [-0.8, 0.35, -0.8],
+      [ 0.8, 0.35, -0.8]
+    ];
+
+    wheelPositions.forEach(pos => {
+      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(...pos);
+      wheel.castShadow = true;
+      this.group.add(wheel);
+    });
+
+    this.group.position.set(x, 0, z);
+
+    this.velocity = new THREE.Vector3();
+    this.speed = 0;
+  }
+
+  update() {
+    this.group.position.add(this.velocity);
+  }
+}
+
+// Create Player Kart
+const player = new BumperKart(0xff0000, 0, 0);
+
+// Movement
 const keys = {};
-window.addEventListener('keydown', e => keys[e.key] = true);
-window.addEventListener('keyup', e => keys[e.key] = false);
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
 
-function updateMovement() {
+function updatePlayer() {
 
-  if (keys["ArrowUp"]) {
-    speed += acceleration;
-  }
+  if (keys["ArrowUp"]) player.speed += 0.01;
+  if (keys["ArrowDown"]) player.speed -= 0.01;
 
-  if (keys["ArrowDown"]) {
-    speed -= acceleration;
-  }
+  player.speed *= 0.98; // friction
 
-  speed = Math.max(-maxSpeed / 2, Math.min(maxSpeed, speed));
-
-  if (!keys["ArrowUp"] && !keys["ArrowDown"]) {
-    if (speed > 0) speed -= friction;
-    if (speed < 0) speed += friction;
-    if (Math.abs(speed) < 0.001) speed = 0;
-  }
-
-  if (speed !== 0) {
-    if (keys["ArrowLeft"]) kart.rotation.y += 0.03;
-    if (keys["ArrowRight"]) kart.rotation.y -= 0.03;
-  }
+  if (keys["ArrowLeft"]) player.group.rotation.y += 0.04;
+  if (keys["ArrowRight"]) player.group.rotation.y -= 0.04;
 
   const forward = new THREE.Vector3(0, 0, -1);
-  forward.applyQuaternion(kart.quaternion);
-  velocity.copy(forward).multiplyScalar(speed);
+  forward.applyQuaternion(player.group.quaternion);
 
-  kart.position.add(velocity);
+  player.velocity.copy(forward).multiplyScalar(player.speed);
 }
 
+// Camera Follow
 function updateCamera() {
-  const offset = new THREE.Vector3(0, 3, 6);
-  offset.applyQuaternion(kart.quaternion);
+  const offset = new THREE.Vector3(0, 4, 6);
+  offset.applyQuaternion(player.group.quaternion);
 
-  camera.position.copy(kart.position).add(offset);
-  camera.lookAt(kart.position);
+  camera.position.copy(player.group.position).add(offset);
+  camera.lookAt(player.group.position);
 }
 
+// Animate
 function animate() {
   requestAnimationFrame(animate);
 
-  updateMovement();
+  updatePlayer();
+  player.update();
   updateCamera();
 
   renderer.render(scene, camera);
 }
 
 animate();
+
+// Resize support
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
 </script>
 
 </body>
