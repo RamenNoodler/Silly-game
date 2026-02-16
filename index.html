@@ -1,196 +1,164 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>3D Bumper Kart</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-  </style>
+<meta charset="UTF-8">
+<title>Portal FPS With View</title>
+<style>
+body { margin: 0; overflow: hidden; }
+canvas { display: block; }
+</style>
 </head>
 <body>
 
-<script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js';
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/PointerLockControls.js"></script>
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
+<script>
 
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
-);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+let scene = new THREE.Scene();
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-renderer.shadowMap.enabled = true;
+// FPS Controls
+let controls = new THREE.PointerLockControls(camera, document.body);
+document.body.addEventListener("click", () => controls.lock());
+scene.add(controls.getObject());
 
 // Lighting
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 10, 5);
-light.castShadow = true;
-scene.add(light);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444));
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+// Floor
+let floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(100,100),
+    new THREE.MeshStandardMaterial({color:0x222222})
+);
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
 
-// Ground
-const groundGeo = new THREE.PlaneGeometry(100, 100);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
+// Portal Render Targets
+let renderTargetA = new THREE.WebGLRenderTarget(512,512);
+let renderTargetB = new THREE.WebGLRenderTarget(512,512);
 
-// -------- BUMPER KART CLASS --------
-class BumperKart {
-  constructor(color, x, z) {
+// Portal Cameras
+let portalCameraA = new THREE.PerspectiveCamera(75,1,0.1,1000);
+let portalCameraB = new THREE.PerspectiveCamera(75,1,0.1,1000);
 
-    this.group = new THREE.Group();
-    scene.add(this.group);
+// Portal Materials
+let portalMaterialA = new THREE.MeshBasicMaterial({map: renderTargetA.texture});
+let portalMaterialB = new THREE.MeshBasicMaterial({map: renderTargetB.texture});
 
-    // Body
-    const bodyGeo = new THREE.BoxGeometry(1.2, 0.4, 2);
-    const bodyMat = new THREE.MeshStandardMaterial({ color });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.4;
-    body.castShadow = true;
-    this.group.add(body);
+// Portal Meshes
+let portalGeo = new THREE.PlaneGeometry(3,5);
 
-    // Nose
-    const noseGeo = new THREE.BoxGeometry(1, 0.35, 0.6);
-    const nose = new THREE.Mesh(noseGeo, bodyMat);
-    nose.position.set(0, 0.4, -1.2);
-    this.group.add(nose);
+let portalA = new THREE.Mesh(portalGeo, portalMaterialA);
+portalA.position.set(0,2,-10);
+scene.add(portalA);
 
-    // Seat
-    const seatGeo = new THREE.BoxGeometry(0.8, 0.4, 0.6);
-    const seatMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-    const seat = new THREE.Mesh(seatGeo, seatMat);
-    seat.position.set(0, 0.6, 0.3);
-    this.group.add(seat);
+let portalB = new THREE.Mesh(portalGeo, portalMaterialB);
+portalB.position.set(0,15,0);
+portalB.rotation.x = -Math.PI/2;
+scene.add(portalB);
 
-    // Wheel setup
-    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16);
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+// Simple cube for depth reference
+let cube = new THREE.Mesh(
+    new THREE.BoxGeometry(2,2,2),
+    new THREE.MeshStandardMaterial({color:0x00ff00})
+);
+cube.position.set(5,2,-15);
+scene.add(cube);
 
-    this.frontWheels = [];
-    this.rearWheels = [];
+// Player physics
+let velocity = new THREE.Vector3();
+let gravity = -20;
+let maxVelocity = 30;
+let canJump = false;
+let keys = {};
 
-    const wheelPositions = [
-      { x: -0.8, y: 0.35, z: 0.8, front: true },
-      { x:  0.8, y: 0.35, z: 0.8, front: true },
-      { x: -0.8, y: 0.35, z: -0.8, front: false },
-      { x:  0.8, y: 0.35, z: -0.8, front: false }
-    ];
+document.addEventListener("keydown", e => keys[e.code]=true);
+document.addEventListener("keyup", e => keys[e.code]=false);
 
-    wheelPositions.forEach(pos => {
-      const wheelPivot = new THREE.Group();
-      wheelPivot.position.set(pos.x, pos.y, pos.z);
-      this.group.add(wheelPivot);
+function updatePlayer(delta){
 
-      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-      wheel.rotation.z = Math.PI / 2; // sideways
-      wheelPivot.add(wheel);
+    let direction = new THREE.Vector3(
+        Number(keys["KeyD"]) - Number(keys["KeyA"]),
+        0,
+        Number(keys["KeyS"]) - Number(keys["KeyW"])
+    );
 
-      if (pos.front) {
-        this.frontWheels.push(wheelPivot);
-      } else {
-        this.rearWheels.push(wheelPivot);
-      }
-    });
+    direction.normalize();
 
-    this.group.position.set(x, 0, z);
+    if(direction.length()>0){
+        let moveDir = new THREE.Vector3();
+        controls.getDirection(moveDir);
+        moveDir.y = 0;
+        moveDir.normalize();
 
-    this.velocity = new THREE.Vector3();
-    this.speed = 0;
-    this.steerAngle = 0;
-  }
+        let right = new THREE.Vector3();
+        right.crossVectors(camera.up, moveDir).normalize();
 
-  update() {
-    this.group.position.add(this.velocity);
+        velocity.add(moveDir.multiplyScalar(-direction.z*10*delta));
+        velocity.add(right.multiplyScalar(direction.x*10*delta));
+    }
 
-    // Spin wheels based on movement
-    const spinAmount = this.speed * 5;
+    velocity.y += gravity*delta;
 
-    [...this.frontWheels, ...this.rearWheels].forEach(pivot => {
-      pivot.children[0].rotation.x -= spinAmount;
-    });
+    if(keys["Space"] && canJump){
+        velocity.y = 8;
+        canJump = false;
+    }
 
-    // Turn front wheels visually
-    this.frontWheels.forEach(pivot => {
-      pivot.rotation.y = this.steerAngle;
-    });
-  }
+    if(velocity.length()>maxVelocity){
+        velocity.normalize().multiplyScalar(maxVelocity);
+    }
+
+    controls.getObject().position.addScaledVector(velocity,delta);
+
+    if(controls.getObject().position.y<2){
+        velocity.y=0;
+        controls.getObject().position.y=2;
+        canJump=true;
+    }
 }
 
+function updatePortalCameras(){
 
-// Create Player Kart
-const player = new BumperKart(0xff0000, 0, 0);
+    // Mirror player position relative to portals
+    let playerPos = controls.getObject().position.clone();
 
-// Movement
-const keys = {};
-window.addEventListener("keydown", e => keys[e.key] = true);
-window.addEventListener("keyup", e => keys[e.key] = false);
+    let offsetA = playerPos.clone().sub(portalA.position);
+    portalCameraB.position.copy(portalB.position.clone().add(offsetA));
+    portalCameraB.quaternion.copy(camera.quaternion);
 
-function updatePlayer() {
+    let offsetB = playerPos.clone().sub(portalB.position);
+    portalCameraA.position.copy(portalA.position.clone().add(offsetB));
+    portalCameraA.quaternion.copy(camera.quaternion);
 
-  if (keys["ArrowUp"]) player.speed += 0.01;
-  if (keys["ArrowDown"]) player.speed -= 0.01;
+    // Render views
+    renderer.setRenderTarget(renderTargetA);
+    renderer.render(scene, portalCameraB);
 
-  player.speed *= 0.98;
+    renderer.setRenderTarget(renderTargetB);
+    renderer.render(scene, portalCameraA);
 
-  // Steering input
-  if (keys["ArrowLeft"]) {
-    player.group.rotation.y += 0.04;
-    player.steerAngle = 0.5;
-  } 
-  else if (keys["ArrowRight"]) {
-    player.group.rotation.y -= 0.04;
-    player.steerAngle = -0.5;
-  } 
-  else {
-    player.steerAngle = 0;
-  }
-
-  const forward = new THREE.Vector3(0, 0, -1);
-  forward.applyQuaternion(player.group.quaternion);
-
-  player.velocity.copy(forward).multiplyScalar(player.speed);
+    renderer.setRenderTarget(null);
 }
 
+let clock = new THREE.Clock();
 
-// Camera Follow
-function updateCamera() {
-  const offset = new THREE.Vector3(0, 4, 6);
-  offset.applyQuaternion(player.group.quaternion);
+function animate(){
+    requestAnimationFrame(animate);
+    let delta = clock.getDelta();
 
-  camera.position.copy(player.group.position).add(offset);
-  camera.lookAt(player.group.position);
-}
+    updatePlayer(delta);
+    updatePortalCameras();
 
-// Animate
-function animate() {
-  requestAnimationFrame(animate);
-
-  updatePlayer();
-  player.update();
-  updateCamera();
-
-  renderer.render(scene, camera);
+    renderer.render(scene,camera);
 }
 
 animate();
 
-// Resize support
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
 </script>
-
 </body>
 </html>
