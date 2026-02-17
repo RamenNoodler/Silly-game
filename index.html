@@ -23,15 +23,12 @@ let renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Controls
 let controls = new THREE.PointerLockControls(camera, document.body);
 document.body.addEventListener("click", ()=>controls.lock());
 scene.add(controls.getObject());
 
-// Light
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
 
-// Floor
 let floor = new THREE.Mesh(
     new THREE.PlaneGeometry(100,100),
     new THREE.MeshStandardMaterial({color:0x222222})
@@ -39,7 +36,6 @@ let floor = new THREE.Mesh(
 floor.rotation.x = -Math.PI/2;
 scene.add(floor);
 
-// Simple cube so you can SEE something
 let cube = new THREE.Mesh(
     new THREE.BoxGeometry(3,3,3),
     new THREE.MeshStandardMaterial({color:0x00ff00})
@@ -49,14 +45,51 @@ scene.add(cube);
 
 camera.position.y = 2;
 
+// Basic movement
+let velocity = new THREE.Vector3();
+let keys = {};
+
+document.addEventListener("keydown", e=>keys[e.code]=true);
+document.addEventListener("keyup", e=>keys[e.code]=false);
+
+let clock = new THREE.Clock();
+
+function update(dt){
+
+    let dir = new THREE.Vector3(
+        Number(keys["KeyD"])-Number(keys["KeyA"]),
+        0,
+        Number(keys["KeyS"])-Number(keys["KeyW"])
+    ).normalize();
+
+    if(dir.length()>0){
+        let forward = new THREE.Vector3();
+        controls.getDirection(forward);
+        forward.y=0;
+        forward.normalize();
+
+        let right = new THREE.Vector3();
+        right.crossVectors(camera.up, forward).normalize();
+
+        velocity.add(forward.multiplyScalar(-dir.z*20*dt));
+        velocity.add(right.multiplyScalar(dir.x*20*dt));
+    }
+
+    velocity.multiplyScalar(0.9); // friction
+    controls.getObject().position.addScaledVector(velocity,dt);
+}
+
 function animate(){
     requestAnimationFrame(animate);
+    let dt = clock.getDelta();
+    update(dt);
     renderer.render(scene,camera);
 }
 
 animate();
 
 </script>
+
 
 </body>
 </html>
