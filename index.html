@@ -59,7 +59,7 @@ function update(dt){
 let dir = new THREE.Vector3(
     Number(keys["KeyA"])-Number(keys["KeyD"]), // Inverted left-right (A = negative, D = positive)
     0,
-    Number(keys["KeyW"])-Number(keys["KeyS"])  // Forward-backward (W = positive, S = negative)
+    Number(keys["KeyS"])-Number(keys["KeyW"])  // Forward-backward (W = positive, S = negative)
 ).normalize();
 
 
