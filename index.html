@@ -56,11 +56,12 @@ let clock = new THREE.Clock();
 
 function update(dt){
 
-    let dir = new THREE.Vector3(
-        Number(keys["KeyD"])-Number(keys["KeyA"]),
-        0,
-        Number(keys["KeyS"])-Number(keys["KeyW"])
-    ).normalize();
+let dir = new THREE.Vector3(
+    Number(keys["KeyA"])-Number(keys["KeyD"]), // Inverted left-right (A = negative, D = positive)
+    0,
+    Number(keys["KeyW"])-Number(keys["KeyS"])  // Forward-backward (W = positive, S = negative)
+).normalize();
+
 
     if(dir.length()>0){
         let forward = new THREE.Vector3();
