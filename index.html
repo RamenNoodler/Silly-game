@@ -23,12 +23,16 @@ let renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
+// Controls
 let controls = new THREE.PointerLockControls(camera, document.body);
 document.body.addEventListener("click", ()=>controls.lock());
 scene.add(controls.getObject());
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
 
+camera.position.y = 2;
+
+// Floor
 let floor = new THREE.Mesh(
     new THREE.PlaneGeometry(100,100),
     new THREE.MeshStandardMaterial({color:0x222222})
@@ -36,32 +40,33 @@ let floor = new THREE.Mesh(
 floor.rotation.x = -Math.PI/2;
 scene.add(floor);
 
-let cube = new THREE.Mesh(
-    new THREE.BoxGeometry(3,3,3),
-    new THREE.MeshStandardMaterial({color:0x00ff00})
-);
-cube.position.set(0,2,-10);
-scene.add(cube);
+// Walls
+let walls = [];
+for(let i=0;i<5;i++){
+    let wall = new THREE.Mesh(
+        new THREE.BoxGeometry(10,10,1),
+        new THREE.MeshStandardMaterial({color:0x555555})
+    );
+    wall.position.set(i*12-24,5,-20);
+    scene.add(wall);
+    walls.push(wall);
+}
 
-camera.position.y = 2;
-
-// Basic movement
+// === PLAYER MOVEMENT ===
 let velocity = new THREE.Vector3();
 let keys = {};
+let clock = new THREE.Clock();
 
 document.addEventListener("keydown", e=>keys[e.code]=true);
 document.addEventListener("keyup", e=>keys[e.code]=false);
 
-let clock = new THREE.Clock();
+function updatePlayer(dt){
 
-function update(dt){
-
-let dir = new THREE.Vector3(
-    Number(keys["KeyA"])-Number(keys["KeyD"]), // Inverted left-right (A = negative, D = positive)
-    0,
-    Number(keys["KeyS"])-Number(keys["KeyW"])  // Forward-backward (W = positive, S = negative)
-).normalize();
-
+    let dir = new THREE.Vector3(
+        Number(keys["KeyA"])-Number(keys["KeyD"]),
+        0,
+        Number(keys["KeyW"])-Number(keys["KeyS"])
+    ).normalize();
 
     if(dir.length()>0){
         let forward = new THREE.Vector3();
@@ -72,24 +77,130 @@ let dir = new THREE.Vector3(
         let right = new THREE.Vector3();
         right.crossVectors(camera.up, forward).normalize();
 
-        velocity.add(forward.multiplyScalar(-dir.z*20*dt));
+        velocity.add(forward.multiplyScalar(dir.z*20*dt));
         velocity.add(right.multiplyScalar(dir.x*20*dt));
     }
 
-    velocity.multiplyScalar(0.9); // friction
+    velocity.multiplyScalar(0.85);
     controls.getObject().position.addScaledVector(velocity,dt);
 }
 
+// === PORTALS ===
+let portalA = null;
+let portalB = null;
+
+function createPortal(color){
+    let portal = new THREE.Mesh(
+        new THREE.PlaneGeometry(3,5),
+        new THREE.MeshBasicMaterial({color:color, side:THREE.DoubleSide})
+    );
+    scene.add(portal);
+    return portal;
+}
+
+// === PORTAL GUN ===
+let hasGun = false;
+
+let gun = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5,0.5,1),
+    new THREE.MeshStandardMaterial({color:0xffffff})
+);
+gun.position.set(0,1.5,-5);
+scene.add(gun);
+
+// Attach gun to camera when picked up
+function attachGun(){
+    gun.position.set(0.5,-0.5,-1);
+    camera.add(gun);
+    hasGun = true;
+}
+
+// Pickup detection
+function checkPickup(){
+    if(!hasGun){
+        if(controls.getObject().position.distanceTo(gun.position)<2){
+            attachGun();
+        }
+    }
+}
+
+// === SHOOTING PORTALS ===
+let raycaster = new THREE.Raycaster();
+
+function shootPortal(color){
+
+    if(!hasGun) return;
+
+    raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+    let intersects = raycaster.intersectObjects(walls);
+
+    if(intersects.length>0){
+
+        let hit = intersects[0];
+
+        let portal = createPortal(color);
+
+        portal.position.copy(hit.point);
+        portal.position.add(hit.face.normal.multiplyScalar(0.01));
+
+        // Align portal to wall
+        let normal = hit.face.normal.clone();
+        let quat = new THREE.Quaternion();
+        quat.setFromUnitVectors(new THREE.Vector3(0,0,1), normal);
+        portal.quaternion.copy(quat);
+
+        if(color === 0x00aaff){
+            if(portalA) scene.remove(portalA);
+            portalA = portal;
+        } else {
+            if(portalB) scene.remove(portalB);
+            portalB = portal;
+        }
+    }
+}
+
+document.addEventListener("keydown", e=>{
+    if(e.code === "KeyQ") shootPortal(0x00aaff);
+    if(e.code === "KeyE") shootPortal(0xff6600);
+});
+
+// === TELEPORT ===
+function checkTeleport(){
+
+    if(!portalA || !portalB) return;
+
+    let playerPos = controls.getObject().position;
+
+    if(playerPos.distanceTo(portalA.position)<1.5){
+        teleport(portalA, portalB);
+    }
+
+    if(playerPos.distanceTo(portalB.position)<1.5){
+        teleport(portalB, portalA);
+    }
+}
+
+function teleport(from,to){
+    let offset = controls.getObject().position.clone().sub(from.position);
+    controls.getObject().position.copy(to.position.clone().add(offset));
+}
+
+// === LOOP ===
 function animate(){
     requestAnimationFrame(animate);
     let dt = clock.getDelta();
-    update(dt);
+
+    updatePlayer(dt);
+    checkPickup();
+    checkTeleport();
+
     renderer.render(scene,camera);
 }
 
 animate();
 
 </script>
+
 
 
 </body>
