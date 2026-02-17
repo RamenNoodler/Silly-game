@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>silly lil thing twt</title>
+// silly lil code TWT ;w;
 <style>
 body { margin:0; overflow:hidden; background:black; }
 canvas { display:block; }
@@ -149,6 +150,7 @@ function shootPortal(color){
         quat.setFromUnitVectors(new THREE.Vector3(0,0,1), normal);
         portal.quaternion.copy(quat);
 
+        // Fix: Ensure correct "up" direction for portals
         if(color === 0x00aaff){
             if(portalA) scene.remove(portalA);
             portalA = portal;
@@ -158,11 +160,6 @@ function shootPortal(color){
         }
     }
 }
-
-document.addEventListener("keydown", e=>{
-    if(e.code === "KeyQ") shootPortal(0x00aaff);
-    if(e.code === "KeyE") shootPortal(0xff6600);
-});
 
 // === TELEPORT ===
 function checkTeleport(){
